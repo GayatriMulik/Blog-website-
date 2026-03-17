@@ -198,54 +198,82 @@ const Home = () => {
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="animate-pulse bg-white rounded-2xl h-96 border border-stone-200"></div>
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="animate-pulse bg-stone-100 rounded-[2rem] h-96 border border-stone-200"></div>
             ))}
           </div>
         ) : posts.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {posts.map((post, index) => (
-              <motion.article
-                key={post.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-white rounded-2xl overflow-hidden border border-stone-200 hover:shadow-xl transition-all group flex flex-col"
-              >
-                <Link to={`/post/${post.id}`} className="block relative h-56 overflow-hidden">
-                  <img 
-                    src={post.image_url || `https://picsum.photos/seed/${post.id}/800/600`} 
-                    alt={post.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute top-4 left-4">
-                    <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">
-                      Blog
-                    </span>
-                  </div>
-                </Link>
-                <div className="p-6 flex-grow flex flex-col">
-                  <div className="flex items-center text-xs text-stone-400 mb-3 space-x-4">
-                    <span className="flex items-center"><Clock className="h-3 w-3 mr-1" /> {format(new Date(post.created_at), 'MMM d, yyyy')}</span>
-                    <span className="flex items-center"><User className="h-3 w-3 mr-1" /> {post.author_name}</span>
-                  </div>
-                  <h3 className="text-xl font-bold text-stone-900 mb-3 line-clamp-2 group-hover:text-emerald-600 transition-colors">
-                    <Link to={`/post/${post.id}`}>{post.title}</Link>
-                  </h3>
-                  <p className="text-stone-600 text-sm line-clamp-3 mb-6 flex-grow">
-                    {post.content.replace(/<[^>]*>/g, '')}
-                  </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+            {posts.map((post, index) => {
+              const isHero = index === 0;
+              return (
+                <motion.article
+                  key={post.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index % 3 * 0.1, duration: 0.6 }}
+                  className={`group relative flex flex-col bg-white rounded-[2.5rem] overflow-hidden border border-stone-100 hover:border-emerald-500/30 hover:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] transition-all duration-500 ${
+                    isHero ? 'md:col-span-2 md:flex-row' : ''
+                  }`}
+                >
                   <Link 
                     to={`/post/${post.id}`} 
-                    className="text-emerald-600 font-bold text-sm flex items-center group/link"
+                    className={`block relative overflow-hidden ${
+                      isHero ? 'md:w-1/2 h-80 md:h-auto' : 'h-64'
+                    }`}
                   >
-                    Read More 
-                    <ArrowRight className="ml-1 h-4 w-4 group-hover/link:translate-x-1 transition-transform" />
+                    <img 
+                      src={post.image_url || `https://picsum.photos/seed/${post.id}/1200/800`} 
+                      alt={post.title}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-stone-950/10 group-hover:bg-transparent transition-colors duration-500"></div>
                   </Link>
-                </div>
-              </motion.article>
-            ))}
+                  
+                  <div className={`p-8 md:p-10 flex flex-col justify-between ${isHero ? 'md:w-1/2' : 'flex-grow'}`}>
+                    <div>
+                      <div className="flex items-center space-x-3 mb-6">
+                        <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-stone-100 text-stone-500 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors">
+                          {post.type}
+                        </span>
+                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center">
+                          <Clock className="h-3 w-3 mr-1" /> {format(new Date(post.created_at), 'MMM d, yyyy')}
+                        </span>
+                      </div>
+                      
+                      <h3 className={`${isHero ? 'text-3xl md:text-4xl' : 'text-2xl'} font-bold text-stone-900 mb-4 leading-tight group-hover:text-emerald-600 transition-colors duration-300`}>
+                        <Link to={`/post/${post.id}`}>{post.title}</Link>
+                      </h3>
+                      
+                      <p className="text-stone-500 text-sm leading-relaxed line-clamp-3 mb-8">
+                        {post.content.replace(/<[^>]*>/g, '').substring(0, 160)}...
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-6 border-t border-stone-50">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs border-2 border-white shadow-sm">
+                          {post.author_name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-stone-900">{post.author_name}</p>
+                          <p className="text-[10px] text-stone-400 font-medium">Contributor</p>
+                        </div>
+                      </div>
+                      
+                      <Link 
+                        to={`/post/${post.id}`} 
+                        className="w-10 h-10 rounded-full bg-stone-50 group-hover:bg-emerald-600 flex items-center justify-center transition-all duration-300 group-hover:rotate-[-45deg]"
+                      >
+                        <ArrowRight className="h-4 w-4 text-stone-400 group-hover:text-white" />
+                      </Link>
+                    </div>
+                  </div>
+                </motion.article>
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-stone-200">

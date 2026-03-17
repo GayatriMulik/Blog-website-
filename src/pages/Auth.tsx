@@ -3,8 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { PenTool, Mail, Lock, User, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
 const Auth = () => {
@@ -121,17 +121,62 @@ const Auth = () => {
       console.error('Auth error:', err);
       let message = 'Authentication failed';
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        message = 'Invalid email or password.';
+        message = 'Invalid email or password. If you recently changed Firebase projects, please Register a new account.';
       } else if (err.code === 'auth/email-already-in-use') {
         message = 'This email is already registered.';
       } else if (err.code === 'auth/weak-password') {
         message = 'Password should be at least 6 characters.';
+      } else if (err.code === 'auth/operation-not-allowed') {
+        message = 'Email/Password sign-in is not enabled in the Firebase Console.';
+      } else {
+        message = err.message || 'An unexpected error occurred.';
       }
       setError(message);
     } finally {
       if (!success) {
         setLoading(false);
       }
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Check if profile exists
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileSnap = await getDoc(profileRef);
+
+      if (!profileSnap.exists()) {
+        const adminEmails = ['gayatrimulik22@gmail.com', 'riddhijadhav204@gmail.com', 'sawantsamruddhi395@gmail.com'];
+        const role = adminEmails.includes(user.email?.toLowerCase() || '') ? 'admin' : 'user';
+
+        await setDoc(profileRef, {
+          id: user.uid,
+          username: user.displayName || user.email?.split('@')[0] || 'User',
+          email: user.email || '',
+          role: role,
+          created_at: new Date().toISOString(),
+        });
+      }
+      setSuccess(true);
+    } catch (err: any) {
+      console.error('Google Auth error:', err);
+      let message = 'Google Sign-In failed';
+      if (err.code === 'auth/popup-closed-by-user') {
+        message = 'Sign-in popup was closed before completion.';
+      } else if (err.code === 'auth/operation-not-allowed') {
+        message = 'Google Sign-In is not enabled in the Firebase Console.';
+      } else {
+        message = err.message || 'An unexpected error occurred.';
+      }
+      setError(message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -292,6 +337,26 @@ const Auth = () => {
                 )}
               </button>
             </form>
+
+            <div className="mt-6">
+              <div className="relative mb-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-stone-200"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-4 bg-white text-stone-400 font-medium">Or continue with</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                className="w-full flex items-center justify-center px-4 py-3 border border-stone-200 rounded-xl bg-white text-stone-700 font-bold hover:bg-stone-50 transition-all disabled:opacity-50"
+              >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-3" referrerPolicy="no-referrer" />
+                Google
+              </button>
+            </div>
 
             <div className="mt-8 text-center">
               <button 

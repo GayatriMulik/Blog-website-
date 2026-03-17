@@ -2,11 +2,62 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Users, FileText, Trash2, Shield, Loader2, AlertCircle, MessageSquare } from 'lucide-react';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, where, getDocs, writeBatch } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { Post, Profile } from '../types';
 import { format } from 'date-fns';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 const AdminDashboard = () => {
   const { user, profile, isAdmin, loading: authLoading } = useAuth();
@@ -27,17 +78,18 @@ const AdminDashboard = () => {
     }
 
     // Subscribe to posts
+    const postsPath = 'posts';
     const postsRef = collection(db, 'posts');
     const postsQuery = query(postsRef, orderBy('created_at', 'desc'));
     const unsubscribePosts = onSnapshot(postsQuery, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Post[];
       setPosts(postsData);
     }, (err) => {
-      console.error('Error fetching admin posts:', err);
-      setError('Failed to fetch posts');
+      handleFirestoreError(err, OperationType.LIST, postsPath);
     });
 
     // Subscribe to users
+    const usersPath = 'profiles';
     const usersRef = collection(db, 'profiles');
     const usersQuery = query(usersRef, orderBy('created_at', 'desc'));
     const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
@@ -45,9 +97,7 @@ const AdminDashboard = () => {
       setUsers(usersData);
       setLoading(false);
     }, (err) => {
-      console.error('Error fetching admin users:', err);
-      setError('Failed to fetch users');
-      setLoading(false);
+      handleFirestoreError(err, OperationType.LIST, usersPath);
     });
 
     return () => {

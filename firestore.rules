@@ -45,8 +45,10 @@ service cloud.firestore {
     function isAdmin() {
       let adminEmails = ["gayatrimulik22@gmail.com", "riddhijadhav204@gmail.com", "sawantsamruddhi395@gmail.com"];
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin' || 
-         (request.auth.token.email in adminEmails && request.auth.token.email_verified == true));
+        (
+          (request.auth.token.email in adminEmails && request.auth.token.email_verified == true) || 
+          (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin')
+        );
     }
 
     function isValidEmail(email) {
@@ -66,8 +68,9 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidProfile(data) {
-      return data.keys().hasOnly(['id', 'username', 'email', 'role', 'created_at']) &&
-             data.id is string && data.id == request.auth.uid &&
+      return data.keys().hasAll(['id', 'username', 'email', 'role', 'created_at']) &&
+             data.keys().hasOnly(['id', 'username', 'email', 'role', 'created_at']) &&
+             data.id is string && data.id.size() > 0 &&
              data.username is string && data.username.size() >= 3 && data.username.size() <= 50 &&
              isValidEmail(data.email) &&
              data.role in ['user', 'admin'] &&
@@ -77,10 +80,10 @@ service cloud.firestore {
     function isValidPost(data) {
       return data.keys().hasAll(['id', 'title', 'content', 'author_id', 'author_name', 'created_at', 'updated_at', 'type']) &&
              data.keys().hasOnly(['id', 'title', 'content', 'author_id', 'author_name', 'image_url', 'created_at', 'updated_at', 'type']) &&
-             data.id is string &&
+             data.id is string && data.id.size() > 0 &&
              data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
              data.content is string && data.content.size() <= 50000 &&
-             data.author_id is string && data.author_id == request.auth.uid &&
+             data.author_id is string && data.author_id.size() > 0 &&
              data.author_name is string && data.author_name.size() > 0 &&
              isValidUrl(data.image_url) &&
              isValidDateString(data.created_at) &&
@@ -91,9 +94,9 @@ service cloud.firestore {
     function isValidComment(data) {
       return data.keys().hasAll(['id', 'post_id', 'author_id', 'author_name', 'content', 'created_at']) &&
              data.keys().hasOnly(['id', 'post_id', 'author_id', 'author_name', 'content', 'created_at']) &&
-             data.id is string &&
-             data.post_id is string &&
-             data.author_id is string && data.author_id == request.auth.uid &&
+             data.id is string && data.id.size() > 0 &&
+             data.post_id is string && data.post_id.size() > 0 &&
+             data.author_id is string && data.author_id.size() > 0 &&
              data.author_name is string && data.author_name.size() > 0 &&
              data.content is string && data.content.size() >= 1 && data.content.size() <= 5000 &&
              isValidDateString(data.created_at);
@@ -105,7 +108,9 @@ service cloud.firestore {
 
     match /profiles/{userId} {
       // Profiles contain PII (email), so only owner or admin can read
-      allow read: if isOwner(userId) || isAdmin();
+      // We use a simpler check for get to avoid potential recursion issues in isAdmin
+      allow get: if isAuthenticated() && (request.auth.uid == userId || (request.auth.token.email in ["gayatrimulik22@gmail.com", "riddhijadhav204@gmail.com", "sawantsamruddhi395@gmail.com"]));
+      allow list: if isAdmin();
       
       // Users can create their own profile, but only as 'user' unless they are the default admin
       allow create: if isOwner(userId) && isValidProfile(request.resource.data) && 
