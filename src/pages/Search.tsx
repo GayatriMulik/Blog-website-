@@ -2,45 +2,56 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Search as SearchIcon, PenTool, User, Clock, ArrowRight, Filter, Loader2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { Post } from '../types';
 import { format } from 'date-fns';
+import { DEMO_POSTS } from '../lib/demoData';
 
 const Search = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const query = searchParams.get('q') || '';
+  const queryParam = searchParams.get('q') || '';
   const typeFilter = searchParams.get('type') || 'all';
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(query);
+  const [searchTerm, setSearchTerm] = useState(queryParam);
 
   useEffect(() => {
     fetchPosts();
-  }, [query, typeFilter]);
+  }, [queryParam, typeFilter]);
 
   const fetchPosts = async () => {
     setLoading(true);
     try {
-      let supabaseQuery = supabase
-        .from('posts')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const postsRef = collection(db, 'posts');
+      const q = query(postsRef, orderBy('created_at', 'desc'));
+      const snapshot = await getDocs(q);
+      
+      const realPosts = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as Post[];
+      
+      const allPosts = [...realPosts, ...DEMO_POSTS];
+      
+      // Filter posts in memory
+      const filteredPosts = allPosts.filter(post => {
+        const matchesQuery = !queryParam || 
+          post.title.toLowerCase().includes(queryParam.toLowerCase()) || 
+          post.content.toLowerCase().includes(queryParam.toLowerCase());
+        const matchesType = typeFilter === 'all' || post.type === typeFilter;
+        return matchesQuery && matchesType;
+      });
 
-      if (query) {
-        supabaseQuery = supabaseQuery.ilike('title', `%${query}%`);
-      }
-
-      if (typeFilter !== 'all') {
-        supabaseQuery = supabaseQuery.eq('type', typeFilter);
-      }
-
-      const { data, error } = await supabaseQuery;
-
-      if (error) throw error;
-      setPosts(data || []);
+      // Sort by date
+      filteredPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      setPosts(filteredPosts);
     } catch (error) {
       console.error('Error searching posts:', error);
+      // Fallback to demo posts if fetch fails
+      setPosts(DEMO_POSTS.filter(post => !queryParam || post.title.toLowerCase().includes(queryParam.toLowerCase())));
     } finally {
       setLoading(false);
     }
@@ -52,7 +63,7 @@ const Search = () => {
   };
 
   const setType = (type: string) => {
-    setSearchParams({ q: query, type });
+    setSearchParams({ q: searchTerm, type });
   };
 
   return (

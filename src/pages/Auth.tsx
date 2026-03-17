@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { PenTool, Mail, Lock, User, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { auth, db } from '../lib/firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
 const Auth = () => {
@@ -12,18 +14,21 @@ const Auth = () => {
   
   // Determine initial mode from URL or default to login
   const [isLogin, setIsLogin] = useState(location.pathname === '/login');
+
+  if (authLoading) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
+      </div>
+    );
+  }
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setError('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment variables.');
-    }
-  }, []);
 
   // Real-time validation
   const [validationErrors, setValidationErrors] = useState({
@@ -67,10 +72,13 @@ const Auth = () => {
     : (username && email && password && !validationErrors.username && !validationErrors.email && !validationErrors.password);
 
   useEffect(() => {
-    if (user) {
-      navigate('/dashboard');
+    if (user && !loading) {
+      const timer = setTimeout(() => {
+        navigate('/dashboard');
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  }, [user, navigate]);
+  }, [user, navigate, loading]);
 
   useEffect(() => {
     setIsLogin(location.pathname === '/login');
@@ -79,53 +87,51 @@ const Auth = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isSupabaseConfigured) {
-      setError('Cannot authenticate: Supabase is not configured.');
-      return;
-    }
     setLoading(true);
     setError(null);
+    setSuccess(false);
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        if (userCredential.user) {
+          setSuccess(true);
+        }
       } else {
         // Sign up
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const newUser = userCredential.user;
+
+        // Assign 'admin' role only to the primary admin emails
+        const adminEmails = ['gayatrimulik22@gmail.com', 'riddhijadhav204@gmail.com', 'sawantsamruddhi395@gmail.com'];
+        const role = adminEmails.includes(email.toLowerCase()) ? 'admin' : 'user';
+
+        // Create profile in Firestore
+        await setDoc(doc(db, 'profiles', newUser.uid), {
+          id: newUser.uid,
+          username,
           email,
-          password,
+          role,
+          created_at: new Date().toISOString(),
         });
-
-        if (authError) throw authError;
-        if (!authData.user) throw new Error('Registration failed');
-
-        // Assign 'admin' role only to the primary admin email
-        const adminEmail = 'gayatrimulik22@gmail.com';
-        const role = email.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : 'user';
-
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: authData.user.id,
-              username,
-              email,
-              role,
-            },
-          ]);
-
-        if (profileError) throw profileError;
+        
+        setSuccess(true);
       }
-      // Navigation is handled by the useEffect watching the 'user' state
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      console.error('Auth error:', err);
+      let message = 'Authentication failed';
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        message = 'Invalid email or password.';
+      } else if (err.code === 'auth/email-already-in-use') {
+        message = 'This email is already registered.';
+      } else if (err.code === 'auth/weak-password') {
+        message = 'Password should be at least 6 characters.';
+      }
+      setError(message);
     } finally {
-      setLoading(false);
+      if (!success) {
+        setLoading(false);
+      }
     }
   };
 
@@ -274,6 +280,10 @@ const Auth = () => {
               >
                 {loading ? (
                   <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                ) : success ? (
+                  <span className="flex items-center">
+                    Success! Redirecting...
+                  </span>
                 ) : (
                   <>
                     {isLogin ? 'Sign In' : 'Sign Up'}

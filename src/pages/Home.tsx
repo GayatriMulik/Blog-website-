@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { PenTool, ArrowRight, Star, Clock, User } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { PenTool, ArrowRight, Star, Clock, User, ChevronRight, ChevronLeft } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { Post } from '../types';
 import { format } from 'date-fns';
 import { DEMO_POSTS } from '../lib/demoData';
@@ -10,40 +11,51 @@ import { DEMO_POSTS } from '../lib/demoData';
 const Home = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const blogSectionRef = useRef<HTMLElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('posts')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(6);
+    const postsRef = collection(db, 'posts');
+    const q = query(postsRef, orderBy('created_at', 'desc'));
 
-        if (error) throw error;
-        
-        // Combine real posts with demo posts for display
-        const combinedPosts = [...(data || []), ...DEMO_POSTS];
-        // Sort by date
-        combinedPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        
-        setPosts(combinedPosts);
-      } catch (error) {
-        console.error('Error fetching posts:', error);
-        // Fallback to demo posts if fetch fails
-        setPosts(DEMO_POSTS);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const realPosts = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as Post[];
 
-    fetchPosts();
+      // Combine real posts with demo posts for display
+      const combinedPosts = [...realPosts, ...DEMO_POSTS];
+      // Sort by date
+      combinedPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      setPosts(combinedPosts);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error fetching posts:', error);
+      setPosts(DEMO_POSTS);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  const scrollToBlogs = () => {
+    blogSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollContainerRef.current) {
+      const { scrollLeft, clientWidth } = scrollContainerRef.current;
+      const scrollTo = direction === 'left' ? scrollLeft - clientWidth : scrollLeft + clientWidth;
+      scrollContainerRef.current.scrollTo({ left: scrollTo, behavior: 'smooth' });
+    }
+  };
 
   return (
     <div className="space-y-16 pb-20">
       {/* Hero Section */}
-      <section className="relative min-h-[700px] flex items-center overflow-hidden bg-stone-950 text-white">
+      <section className="relative min-h-[800px] flex items-center overflow-hidden bg-stone-950 text-white">
         <div className="absolute inset-0 z-0">
           <motion.div 
             initial={{ scale: 1.1, opacity: 0 }}
@@ -87,12 +99,12 @@ const Home = () => {
                   Get Started
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
-                <Link 
-                  to="/search" 
+                <button 
+                  onClick={scrollToBlogs}
                   className="bg-white/5 hover:bg-white/10 backdrop-blur-xl text-white border border-white/10 px-10 py-5 rounded-2xl font-bold text-lg transition-all"
                 >
                   Explore Feed
-                </Link>
+                </button>
               </div>
             </motion.div>
           </div>
@@ -103,8 +115,77 @@ const Home = () => {
         <div className="absolute top-0 left-1/4 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full -mt-20"></div>
       </section>
 
-      {/* Recent Posts */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Featured Section (Horizontal Scroll) */}
+      {!loading && posts.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-end mb-8">
+            <div>
+              <h2 className="text-3xl font-bold text-stone-900 mb-2">Featured Stories</h2>
+              <p className="text-stone-500">Hand-picked insights from our top contributors.</p>
+            </div>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => scroll('left')}
+                className="p-3 rounded-full bg-stone-100 hover:bg-stone-200 transition-colors text-stone-600"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button 
+                onClick={() => scroll('right')}
+                className="p-3 rounded-full bg-stone-100 hover:bg-stone-200 transition-colors text-stone-600"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          <div 
+            ref={scrollContainerRef}
+            className="flex overflow-x-auto gap-8 pb-8 scrollbar-hide snap-x snap-mandatory"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {posts.slice(0, 5).map((post, index) => (
+              <motion.div
+                key={post.id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: index * 0.1 }}
+                className="min-w-[300px] md:min-w-[450px] snap-start"
+              >
+                <Link to={`/post/${post.id}`} className="block group relative h-[500px] rounded-[2.5rem] overflow-hidden">
+                  <img 
+                    src={post.image_url || `https://picsum.photos/seed/${post.id}/800/1000`} 
+                    alt={post.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-950/20 to-transparent opacity-80"></div>
+                  <div className="absolute bottom-0 left-0 p-8 w-full">
+                    <div className="flex items-center space-x-4 mb-4">
+                      <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-500 text-white">
+                        Featured
+                      </span>
+                      <span className="text-xs text-stone-300 font-medium flex items-center">
+                        <Clock className="h-3 w-3 mr-1" /> {format(new Date(post.created_at), 'MMM d')}
+                      </span>
+                    </div>
+                    <h3 className="text-3xl font-bold text-white mb-4 line-clamp-2 leading-tight">
+                      {post.title}
+                    </h3>
+                    <div className="flex items-center text-sm text-stone-300">
+                      <User className="h-4 w-4 mr-2" />
+                      {post.author_name}
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Latest Stories Grid */}
+      <section ref={blogSectionRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12">
         <div className="flex justify-between items-end mb-12">
           <div>
             <h2 className="text-3xl font-bold text-stone-900 mb-2">Latest Stories</h2>

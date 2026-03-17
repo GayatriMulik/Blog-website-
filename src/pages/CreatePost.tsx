@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowLeft, Save, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { doc, getDoc, setDoc, updateDoc, collection, addDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
 const CreatePost = () => {
@@ -32,14 +33,15 @@ const CreatePost = () => {
 
   const fetchPost = async () => {
     try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('id', id)
-        .single();
+      const postRef = doc(db, 'posts', id!);
+      const docSnap = await getDoc(postRef);
 
-      if (error) throw error;
-      if (data.author_id !== user?.id && profile?.role !== 'admin') {
+      if (!docSnap.exists()) {
+        throw new Error('Post not found');
+      }
+
+      const data = docSnap.data();
+      if (data.author_id !== user?.uid && profile?.role !== 'admin') {
         navigate('/dashboard');
         return;
       }
@@ -60,32 +62,34 @@ const CreatePost = () => {
     setLoading(true);
     setError(null);
 
+    const now = new Date().toISOString();
     const postData = {
       title,
       content,
       type,
       image_url: imageUrl || null,
-      author_id: user?.id,
+      author_id: user?.uid,
       author_name: profile?.username || 'Anonymous',
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     };
 
     try {
       if (isEditing) {
-        const { error } = await supabase
-          .from('posts')
-          .update(postData)
-          .eq('id', id);
-        if (error) throw error;
+        const postRef = doc(db, 'posts', id!);
+        await updateDoc(postRef, postData);
       } else {
-        const { error } = await supabase
-          .from('posts')
-          .insert([{ ...postData, created_at: new Date().toISOString() }]);
-        if (error) throw error;
+        const postsRef = collection(db, 'posts');
+        const newDocRef = doc(postsRef); // Generate ID first
+        await setDoc(newDocRef, { 
+          ...postData, 
+          id: newDocRef.id,
+          created_at: now 
+        });
       }
 
       navigate('/dashboard');
     } catch (err: any) {
+      console.error('Save error:', err);
       setError(err.message || 'Failed to save post');
     } finally {
       setLoading(false);

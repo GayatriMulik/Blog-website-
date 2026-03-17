@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Users, FileText, Trash2, Shield, Loader2, AlertCircle, MessageSquare } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, query, orderBy, onSnapshot, deleteDoc, doc, where, getDocs, writeBatch } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { Post, Profile } from '../types';
 import { format } from 'date-fns';
@@ -25,46 +26,41 @@ const AdminDashboard = () => {
       return;
     }
 
-    fetchAdminData();
-  }, [user, isAdmin, authLoading]);
+    // Subscribe to posts
+    const postsRef = collection(db, 'posts');
+    const postsQuery = query(postsRef, orderBy('created_at', 'desc'));
+    const unsubscribePosts = onSnapshot(postsQuery, (snapshot) => {
+      const postsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Post[];
+      setPosts(postsData);
+    }, (err) => {
+      console.error('Error fetching admin posts:', err);
+      setError('Failed to fetch posts');
+    });
 
-  const fetchAdminData = async () => {
-    try {
-      // Fetch all posts
-      const { data: postsData, error: postsError } = await supabase
-        .from('posts')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (postsError) throw postsError;
-      setPosts(postsData || []);
-
-      // Fetch all users
-      const { data: usersData, error: usersError } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (usersError) throw usersError;
-      setUsers(usersData || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch admin data');
-    } finally {
+    // Subscribe to users
+    const usersRef = collection(db, 'profiles');
+    const usersQuery = query(usersRef, orderBy('created_at', 'desc'));
+    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Profile[];
+      setUsers(usersData);
       setLoading(false);
-    }
-  };
+    }, (err) => {
+      console.error('Error fetching admin users:', err);
+      setError('Failed to fetch users');
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribePosts();
+      unsubscribeUsers();
+    };
+  }, [user, isAdmin, authLoading, navigate]);
 
   const handleDeletePost = async (postId: string) => {
     if (!window.confirm('Admin: Delete this post?')) return;
 
     try {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', postId);
-
-      if (error) throw error;
-      setPosts(posts.filter(p => p.id !== postId));
+      await deleteDoc(doc(db, 'posts', postId));
     } catch (err: any) {
       alert(err.message || 'Failed to delete post');
     }
@@ -74,16 +70,31 @@ const AdminDashboard = () => {
     if (!window.confirm('Admin: Delete this user and all their data? This action is irreversible.')) return;
 
     try {
-      // Note: In a real app, you'd use a Supabase Edge Function to delete the auth user too.
-      // Here we just delete the profile and their posts.
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', userId);
+      const batch = writeBatch(db);
+      
+      // Delete profile
+      batch.delete(doc(db, 'profiles', userId));
+      
+      // Find and delete all user's posts
+      const postsRef = collection(db, 'posts');
+      const userPostsQuery = query(postsRef, where('author_id', '==', userId));
+      const userPostsSnapshot = await getDocs(userPostsQuery);
+      
+      userPostsSnapshot.docs.forEach((postDoc) => {
+        batch.delete(postDoc.ref);
+      });
 
-      if (profileError) throw profileError;
-      setUsers(users.filter(u => u.id !== userId));
-      setPosts(posts.filter(p => p.author_id !== userId));
+      // Find and delete all user's comments
+      const commentsRef = collection(db, 'comments');
+      const userCommentsQuery = query(commentsRef, where('author_id', '==', userId));
+      const userCommentsSnapshot = await getDocs(userCommentsQuery);
+      
+      userCommentsSnapshot.docs.forEach((commentDoc) => {
+        batch.delete(commentDoc.ref);
+      });
+
+      await batch.commit();
+      // onSnapshot will handle UI updates
     } catch (err: any) {
       alert(err.message || 'Failed to delete user');
     }
@@ -281,14 +292,14 @@ const AdminDashboard = () => {
                     <td className="px-8 py-5 text-sm text-stone-600 font-medium">{u.email}</td>
                     <td className="px-8 py-5">
                       <span className={`text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-1 rounded-full ${
-                        u.role === 'admin' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-stone-100 text-stone-700 border border-stone-200'
+                        (u.role === 'admin' || ['gayatrimulik22@gmail.com', 'riddhijadhav204@gmail.com', 'sawantsamruddhi395@gmail.com'].includes(u.email.toLowerCase())) ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-stone-100 text-stone-700 border border-stone-200'
                       }`}>
-                        {u.role}
+                        {(u.role === 'admin' || ['gayatrimulik22@gmail.com', 'riddhijadhav204@gmail.com', 'sawantsamruddhi395@gmail.com'].includes(u.email.toLowerCase())) ? 'admin' : u.role}
                       </span>
                     </td>
                     <td className="px-8 py-5 text-sm text-stone-400 font-medium">{format(new Date(u.created_at), 'MMM d, yyyy')}</td>
                     <td className="px-8 py-5 text-right">
-                      {u.id !== user?.id && (
+                      {u.id !== user?.uid && (
                         <button 
                           onClick={() => handleDeleteUser(u.id)}
                           className="p-3 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all"

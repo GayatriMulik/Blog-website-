@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { User, Clock, ArrowLeft, MessageSquare, Send, Trash2, Loader2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { doc, getDoc, collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { Post, Comment } from '../types';
 import { format } from 'date-fns';
@@ -20,45 +21,49 @@ const PostDetail = () => {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchPostAndComments();
-  }, [id]);
+    if (!id) return;
 
-  const fetchPostAndComments = async () => {
-    try {
-      // Check if it's a demo post first
-      const demoPost = DEMO_POSTS.find(p => p.id === id);
-      if (demoPost) {
-        setPost(demoPost);
-        setComments([]); // Demo posts have no comments for now
-        setLoading(false);
-        return;
-      }
-
-      // Fetch post from Supabase
-      const { data: postData, error: postError } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (postError) throw postError;
-      setPost(postData);
-
-      // Fetch comments
-      const { data: commentData, error: commentError } = await supabase
-        .from('comments')
-        .select('*')
-        .eq('post_id', id)
-        .order('created_at', { ascending: true });
-
-      if (commentError) throw commentError;
-      setComments(commentData || []);
-    } catch (error) {
-      console.error('Error fetching post details:', error);
-    } finally {
+    // Check if it's a demo post first
+    const demoPost = DEMO_POSTS.find(p => p.id === id);
+    if (demoPost) {
+      setPost(demoPost);
+      setComments([]);
       setLoading(false);
+      return;
     }
-  };
+
+    // Fetch post from Firestore
+    const postRef = doc(db, 'posts', id);
+    const unsubscribePost = onSnapshot(postRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setPost({ ...docSnap.data(), id: docSnap.id } as Post);
+      } else {
+        setPost(null);
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error('Error fetching post:', error);
+      setLoading(false);
+    });
+
+    // Fetch comments from Firestore
+    const commentsRef = collection(db, 'comments');
+    const q = query(commentsRef, where('post_id', '==', id), orderBy('created_at', 'asc'));
+    const unsubscribeComments = onSnapshot(q, (snapshot) => {
+      const commentData = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as Comment[];
+      setComments(commentData);
+    }, (error) => {
+      console.error('Error fetching comments:', error);
+    });
+
+    return () => {
+      unsubscribePost();
+      unsubscribeComments();
+    };
+  }, [id]);
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,25 +75,22 @@ const PostDetail = () => {
 
     setSubmitting(true);
     try {
-      const { data, error } = await supabase
-        .from('comments')
-        .insert([
-          {
-            post_id: id,
-            author_id: user.id,
-            author_name: profile?.username || 'Anonymous',
-            content: newComment,
-            created_at: new Date().toISOString(),
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
-      setComments([...comments, data]);
+      const commentsRef = collection(db, 'comments');
+      const newCommentRef = doc(commentsRef);
+      const commentData = {
+        id: newCommentRef.id,
+        post_id: id,
+        author_id: user.uid,
+        author_name: profile?.username || 'Anonymous',
+        content: newComment,
+        created_at: new Date().toISOString(),
+      };
+      
+      await setDoc(newCommentRef, commentData);
       setNewComment('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting comment:', error);
+      alert(error.message || 'Failed to submit comment');
     } finally {
       setSubmitting(false);
     }
@@ -98,13 +100,7 @@ const PostDetail = () => {
     if (!window.confirm('Delete this comment?')) return;
 
     try {
-      const { error } = await supabase
-        .from('comments')
-        .delete()
-        .eq('id', commentId);
-
-      if (error) throw error;
-      setComments(comments.filter(c => c.id !== commentId));
+      await deleteDoc(doc(db, 'comments', commentId));
     } catch (error) {
       console.error('Error deleting comment:', error);
     }
@@ -223,7 +219,7 @@ const PostDetail = () => {
                   </div>
                   <p className="text-stone-600 text-sm leading-relaxed">{comment.content}</p>
                   
-                  {(user?.id === comment.author_id || profile?.role === 'admin') && (
+                  {(user?.uid === comment.author_id || profile?.role === 'admin') && (
                     <button 
                       onClick={() => handleCommentDelete(comment.id)}
                       className="mt-2 text-[10px] text-red-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center"

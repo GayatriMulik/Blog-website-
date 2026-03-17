@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Plus, Edit2, Trash2, PenTool, FileText, MessageSquare, Star, Loader2, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, query, where, orderBy, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { Post } from '../types';
 import { format } from 'date-fns';
@@ -22,37 +23,35 @@ const Dashboard = () => {
       return;
     }
 
-    fetchUserPosts();
-  }, [user, authLoading]);
+    const postsRef = collection(db, 'posts');
+    const q = query(
+      postsRef, 
+      where('author_id', '==', user.uid),
+      orderBy('created_at', 'desc')
+    );
 
-  const fetchUserPosts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('author_id', user?.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setPosts(data || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch posts');
-    } finally {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const userPosts = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as Post[];
+      setPosts(userPosts);
       setLoading(false);
-    }
-  };
+    }, (err) => {
+      console.error('Error fetching user posts:', err);
+      setError('Failed to fetch posts. Please check your connection.');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user, authLoading, navigate]);
 
   const handleDelete = async (postId: string) => {
     if (!window.confirm('Are you sure you want to delete this post?')) return;
 
     try {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', postId);
-
-      if (error) throw error;
-      setPosts(posts.filter(p => p.id !== postId));
+      await deleteDoc(doc(db, 'posts', postId));
+      // onSnapshot will automatically update the UI
     } catch (err: any) {
       alert(err.message || 'Failed to delete post');
     }

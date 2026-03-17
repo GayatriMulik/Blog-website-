@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "Profile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the user (matches Auth UID)" },
+        "username": { "type": "string", "description": "Display name of the user" },
+        "email": { "type": "string", "format": "email", "description": "User's email address" },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "User's role in the system" },
+        "created_at": { "type": "string", "format": "date-time", "description": "When the profile was created" }
+      },
+      "required": ["id", "username", "email", "role", "created_at"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A blog post or story",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the post" },
+        "title": { "type": "string", "description": "The title of the post" },
+        "content": { "type": "string", "description": "The markdown or HTML content of the post" },
+        "author_id": { "type": "string", "description": "UID of the author" },
+        "author_name": { "type": "string", "description": "Display name of the author" },
+        "image_url": { "type": "string", "format": "uri", "description": "URL to the post's featured image" },
+        "created_at": { "type": "string", "format": "date-time", "description": "When the post was created" },
+        "updated_at": { "type": "string", "format": "date-time", "description": "When the post was last updated" },
+        "type": { "type": "string", "enum": ["blog"], "description": "The type of content" }
+      },
+      "required": ["id", "title", "content", "author_id", "author_name", "created_at", "updated_at", "type"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "A comment on a post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the comment" },
+        "post_id": { "type": "string", "description": "The ID of the post being commented on" },
+        "author_id": { "type": "string", "description": "UID of the author" },
+        "author_name": { "type": "string", "description": "Display name of the author" },
+        "content": { "type": "string", "description": "The content of the comment" },
+        "created_at": { "type": "string", "format": "date-time", "description": "When the comment was created" }
+      },
+      "required": ["id", "post_id", "author_id", "author_name", "content", "created_at"]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": "Profile",
+      "description": "Collection of user profiles"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Collection of blog posts"
+    },
+    "/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Collection of comments"
+    }
+  }
+}

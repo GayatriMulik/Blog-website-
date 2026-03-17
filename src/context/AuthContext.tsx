@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { Profile } from '../types';
 
 interface AuthContextType {
@@ -19,58 +20,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
       if (currentUser) {
-        fetchProfile(currentUser.id);
-      }
-      setLoading(false);
-    });
+        // Use onSnapshot for real-time profile updates
+        const profileRef = doc(db, 'profiles', currentUser.uid);
+        const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setProfile(docSnap.data() as Profile);
+          } else {
+            // Fallback profile if document doesn't exist yet
+            const adminEmails = ['gayatrimulik22@gmail.com', 'riddhijadhav204@gmail.com', 'sawantsamruddhi395@gmail.com'];
+            const role = adminEmails.includes(currentUser.email?.toLowerCase() || '') ? 'admin' : 'user';
+            
+            setProfile({
+              id: currentUser.uid,
+              username: currentUser.email?.split('@')[0] || 'User',
+              email: currentUser.email || '',
+              role: role,
+              created_at: new Date().toISOString()
+            });
+          }
+          setLoading(false);
+        }, (error) => {
+          console.error('Profile snapshot error:', error);
+          setLoading(false);
+        });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        fetchProfile(currentUser.id);
+        return () => unsubscribeProfile();
       } else {
         setProfile(null);
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      setProfile(data);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await firebaseSignOut(auth);
   };
+
+  const adminEmails = ['gayatrimulik22@gmail.com', 'riddhijadhav204@gmail.com', 'sawantsamruddhi395@gmail.com'];
+  const isAdmin = profile?.role === 'admin' || adminEmails.includes(user?.email?.toLowerCase() || '');
 
   return (
     <AuthContext.Provider value={{ 
       user, 
       profile, 
       loading, 
-      isAdmin: profile?.role === 'admin',
+      isAdmin,
       signOut 
     }}>
       {children}
