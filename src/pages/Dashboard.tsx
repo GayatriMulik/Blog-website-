@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Plus, Edit2, Trash2, PenTool, FileText, MessageSquare, Star, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, PenTool, FileText, MessageSquare, Star, Loader2, AlertCircle, Heart } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -64,6 +64,8 @@ const Dashboard = () => {
       </div>
     );
   }
+
+  const totalLikes = posts.reduce((acc, post) => acc + (post.likes_count || 0), 0);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -146,9 +148,9 @@ const Dashboard = () => {
         >
           <div className="flex items-center justify-between mb-6">
             <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center">
-              <Star className="h-6 w-6 text-emerald-400" />
+              <Heart className="h-6 w-6 text-rose-400" />
             </div>
-            <span className="text-4xl font-bold text-white">0</span>
+            <span className="text-4xl font-bold text-white">{totalLikes}</span>
           </div>
           <p className="text-stone-400 text-[10px] font-bold uppercase tracking-[0.2em]">Total Likes</p>
         </motion.div>
@@ -209,6 +211,10 @@ const Dashboard = () => {
                         Blog
                       </span>
                       <span className="text-xs text-stone-400 font-medium">{format(new Date(post.created_at), 'MMMM d, yyyy')}</span>
+                      <div className="flex items-center text-xs text-stone-400 font-bold">
+                        <Heart className="h-3.5 w-3.5 mr-1 text-rose-500" />
+                        {post.likes_count || 0}
+                      </div>
                     </div>
                   </div>
                 </div>

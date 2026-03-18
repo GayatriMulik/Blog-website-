@@ -24,11 +24,24 @@
         "author_id": { "type": "string", "description": "UID of the author" },
         "author_name": { "type": "string", "description": "Display name of the author" },
         "image_url": { "type": "string", "format": "uri", "description": "URL to the post's featured image" },
+        "likes_count": { "type": "integer", "description": "Number of likes on the post" },
         "created_at": { "type": "string", "format": "date-time", "description": "When the post was created" },
         "updated_at": { "type": "string", "format": "date-time", "description": "When the post was last updated" },
         "type": { "type": "string", "enum": ["blog"], "description": "The type of content" }
       },
       "required": ["id", "title", "content", "author_id", "author_name", "created_at", "updated_at", "type"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "A like on a post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the like (userId_postId)" },
+        "user_id": { "type": "string", "description": "UID of the user who liked" },
+        "post_id": { "type": "string", "description": "ID of the post liked" },
+        "created_at": { "type": "string", "format": "date-time", "description": "When the like was created" }
+      },
+      "required": ["id", "user_id", "post_id", "created_at"]
     },
     "Comment": {
       "title": "Comment",
@@ -57,6 +70,10 @@
     "/comments/{commentId}": {
       "schema": "Comment",
       "description": "Collection of comments"
+    },
+    "/likes/{likeId}": {
+      "schema": "Like",
+      "description": "Collection of post likes"
     }
   }
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Search as SearchIcon, PenTool, User, Clock, ArrowRight, Filter, Loader2 } from 'lucide-react';
+import { Search as SearchIcon, PenTool, User, Clock, ArrowRight, Filter, Loader2, Heart } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { Post } from '../types';
@@ -134,13 +134,19 @@ const Search = () => {
                 <p className="text-stone-600 text-sm line-clamp-3 mb-6 flex-grow leading-relaxed">
                   {post.content.replace(/<[^>]*>/g, '')}
                 </p>
-                <Link 
-                  to={`/post/${post.id}`} 
-                  className="text-emerald-600 font-bold text-xs flex items-center group/link uppercase tracking-widest"
-                >
-                  Read Full Article 
-                  <ArrowRight className="ml-1 h-3 w-3 group-hover/link:translate-x-1 transition-transform" />
-                </Link>
+                <div className="flex items-center justify-between mt-auto pt-4 border-t border-stone-50">
+                  <Link 
+                    to={`/post/${post.id}`} 
+                    className="text-emerald-600 font-bold text-xs flex items-center group/link uppercase tracking-widest"
+                  >
+                    Read More
+                    <ArrowRight className="ml-1 h-3 w-3 group-hover/link:translate-x-1 transition-transform" />
+                  </Link>
+                  <div className="flex items-center text-stone-400 text-xs font-bold">
+                    <Heart className="h-3.5 w-3.5 mr-1 text-rose-500" />
+                    {post.likes_count || 0}
+                  </div>
+                </div>
               </div>
             </motion.article>
           ))}

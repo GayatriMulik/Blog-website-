@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { PenTool, ArrowRight, Star, Clock, User, ChevronRight, ChevronLeft } from 'lucide-react';
+import { PenTool, ArrowRight, Star, Clock, User, ChevronRight, ChevronLeft, Heart, MessageSquare } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { Post } from '../types';
@@ -172,9 +172,15 @@ const Home = () => {
                     <h3 className="text-3xl font-bold text-white mb-4 line-clamp-2 leading-tight">
                       {post.title}
                     </h3>
-                    <div className="flex items-center text-sm text-stone-300">
-                      <User className="h-4 w-4 mr-2" />
-                      {post.author_name}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center text-sm text-stone-300">
+                        <User className="h-4 w-4 mr-2" />
+                        {post.author_name}
+                      </div>
+                      <div className="flex items-center text-sm text-stone-300 font-bold">
+                        <Heart className="h-4 w-4 mr-1 text-rose-500 fill-rose-500" />
+                        {post.likes_count || 0}
+                      </div>
                     </div>
                   </div>
                 </Link>
@@ -250,6 +256,13 @@ const Home = () => {
                       <p className="text-stone-500 text-sm leading-relaxed line-clamp-3 mb-8">
                         {post.content.replace(/<[^>]*>/g, '').substring(0, 160)}...
                       </p>
+
+                      <div className="flex items-center space-x-4 mb-8">
+                        <div className="flex items-center text-stone-400 text-xs font-bold">
+                          <Heart className="h-4 w-4 mr-1 text-rose-500" />
+                          {post.likes_count || 0}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-6 border-t border-stone-50">
