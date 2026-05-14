@@ -45,9 +45,9 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (
-          request.auth.token.email == "gayatrimulik22@gmail.com" || 
-          request.auth.token.email == "riddhijadhav204@gmail.com" || 
-          request.auth.token.email == "sawantsamruddhi395@gmail.com" ||
+          request.auth.token.get('email', '') == "gayatrimulik22@gmail.com" || 
+          request.auth.token.get('email', '') == "riddhijadhav204@gmail.com" || 
+          request.auth.token.get('email', '') == "sawantsamruddhi395@gmail.com" ||
           (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin')
         );
     }
@@ -141,7 +141,11 @@ service cloud.firestore {
     match /profiles/{userId} {
       // Profiles contain PII (email), so only owner or admin can read
       // We use a simpler check for get to avoid potential recursion issues in isAdmin
-      allow get: if isAuthenticated() && (request.auth.uid == userId || (request.auth.token.email in ["gayatrimulik22@gmail.com", "riddhijadhav204@gmail.com", "sawantsamruddhi395@gmail.com"]));
+      allow get: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        request.auth.token.get('email', '') in ["gayatrimulik22@gmail.com", "riddhijadhav204@gmail.com", "sawantsamruddhi395@gmail.com"] ||
+        isAdmin()
+      );
       allow list: if isAdmin();
       
       // Users can create their own profile, but only as 'user' unless they are the default admin

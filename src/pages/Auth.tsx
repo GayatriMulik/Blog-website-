@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { PenTool, Mail, Lock, User, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
@@ -14,6 +14,7 @@ const Auth = () => {
   
   // Determine initial mode from URL or default to login
   const [isLogin, setIsLogin] = useState(location.pathname === '/login');
+  const [isResetMode, setIsResetMode] = useState(false);
 
   if (authLoading) {
     return (
@@ -28,6 +29,7 @@ const Auth = () => {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Real-time validation
@@ -82,8 +84,35 @@ const Auth = () => {
 
   useEffect(() => {
     setIsLogin(location.pathname === '/login');
+    setIsResetMode(false);
     setError(null);
+    setResetSent(false);
   }, [location.pathname]);
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      setError('Please enter your email address');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+      let message = 'Failed to send reset email';
+      if (err.code === 'auth/user-not-found') {
+        message = 'No account found with this email.';
+      } else {
+        message = err.message || 'An unexpected error occurred.';
+      }
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,10 +243,12 @@ const Auth = () => {
                 <PenTool className="h-8 w-8 text-emerald-600" />
               </div>
               <h2 className="text-3xl font-bold text-stone-900">
-                {isLogin ? 'Welcome Back' : 'Join BlogHub'}
+                {isResetMode ? 'Reset Password' : (isLogin ? 'Welcome Back' : 'Join BlogHub')}
               </h2>
               <p className="text-stone-500 mt-2">
-                {isLogin ? 'Sign in to your account' : 'Start your blogging journey today'}
+                {isResetMode 
+                  ? 'We\'ll send you instructions to reset your password' 
+                  : (isLogin ? 'Sign in to your account' : 'Start your blogging journey today')}
               </p>
             </div>
 
@@ -232,144 +263,197 @@ const Auth = () => {
               </motion.div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <AnimatePresence mode="wait">
-                {!isLogin && (
-                  <motion.div
-                    key="username"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                  >
-                    <label className="block text-sm font-semibold text-stone-700 mb-2">Username</label>
+            {resetSent ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center py-6"
+              >
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Mail className="h-8 w-8" />
+                </div>
+                <h3 className="text-xl font-bold text-stone-900 mb-2">Check your email</h3>
+                <p className="text-stone-500 mb-8">
+                  We've sent a password reset link to <span className="font-bold text-stone-900">{email}</span>. 
+                  <br /><br />
+                  <span className="text-sm">Don't see it? Please check your <strong>spam/junk folder</strong>.</span>
+                </p>
+                <button
+                  onClick={() => { setIsResetMode(false); setResetSent(false); }}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-emerald-600/20"
+                >
+                  Back to Login
+                </button>
+              </motion.div>
+            ) : (
+              <>
+                <form onSubmit={isResetMode ? handleResetPassword : handleSubmit} className="space-y-5">
+                  <AnimatePresence mode="wait">
+                    {!isLogin && !isResetMode && (
+                      <motion.div
+                        key="username"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                      >
+                        <label className="block text-sm font-semibold text-stone-700 mb-2">Username</label>
+                        <div className="relative">
+                          <User className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors ${validationErrors.username ? 'text-red-400' : 'text-stone-400'}`} />
+                          <input
+                            type="text"
+                            required={!isLogin && !isResetMode}
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            className={`w-full pl-10 pr-4 py-3 bg-stone-50 border rounded-xl outline-none transition-all ${
+                              validationErrors.username 
+                                ? 'border-red-300 focus:ring-2 focus:ring-red-500/20 focus:border-red-500' 
+                                : 'border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'
+                            }`}
+                            placeholder="johndoe"
+                          />
+                        </div>
+                        {validationErrors.username && (
+                          <p className="mt-1.5 text-xs text-red-500 font-medium flex items-center">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            {validationErrors.username}
+                          </p>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-stone-700 mb-2">Email Address</label>
                     <div className="relative">
-                      <User className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors ${validationErrors.username ? 'text-red-400' : 'text-stone-400'}`} />
+                      <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors ${validationErrors.email ? 'text-red-400' : 'text-stone-400'}`} />
                       <input
-                        type="text"
-                        required={!isLogin}
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                         className={`w-full pl-10 pr-4 py-3 bg-stone-50 border rounded-xl outline-none transition-all ${
-                          validationErrors.username 
+                          validationErrors.email 
                             ? 'border-red-300 focus:ring-2 focus:ring-red-500/20 focus:border-red-500' 
                             : 'border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'
                         }`}
-                        placeholder="johndoe"
+                        placeholder="you@example.com"
                       />
                     </div>
-                    {validationErrors.username && (
+                    {validationErrors.email && (
                       <p className="mt-1.5 text-xs text-red-500 font-medium flex items-center">
                         <AlertCircle className="h-3 w-3 mr-1" />
-                        {validationErrors.username}
+                        {validationErrors.email}
                       </p>
                     )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-stone-700 mb-2">Email Address</label>
-                <div className="relative">
-                  <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors ${validationErrors.email ? 'text-red-400' : 'text-stone-400'}`} />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 bg-stone-50 border rounded-xl outline-none transition-all ${
-                      validationErrors.email 
-                        ? 'border-red-300 focus:ring-2 focus:ring-red-500/20 focus:border-red-500' 
-                        : 'border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'
-                    }`}
-                    placeholder="you@example.com"
-                  />
-                </div>
-                {validationErrors.email && (
-                  <p className="mt-1.5 text-xs text-red-500 font-medium flex items-center">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    {validationErrors.email}
-                  </p>
-                )}
-              </div>
+                  {!isResetMode && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-semibold text-stone-700">Password</label>
+                        {isLogin && (
+                          <button
+                            type="button"
+                            onClick={() => setIsResetMode(true)}
+                            className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
+                          >
+                            Forgot Password?
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors ${validationErrors.password ? 'text-red-400' : 'text-stone-400'}`} />
+                        <input
+                          type="password"
+                          required={!isResetMode}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className={`w-full pl-10 pr-4 py-3 bg-stone-50 border rounded-xl outline-none transition-all ${
+                            validationErrors.password 
+                              ? 'border-red-300 focus:ring-2 focus:ring-red-500/20 focus:border-red-500' 
+                              : 'border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'
+                          }`}
+                          placeholder="••••••••"
+                          minLength={6}
+                        />
+                      </div>
+                      {validationErrors.password && (
+                        <p className="mt-1.5 text-xs text-red-500 font-medium flex items-center">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          {validationErrors.password}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-              <div>
-                <label className="block text-sm font-semibold text-stone-700 mb-2">Password</label>
-                <div className="relative">
-                  <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors ${validationErrors.password ? 'text-red-400' : 'text-stone-400'}`} />
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 bg-stone-50 border rounded-xl outline-none transition-all ${
-                      validationErrors.password 
-                        ? 'border-red-300 focus:ring-2 focus:ring-red-500/20 focus:border-red-500' 
-                        : 'border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'
-                    }`}
-                    placeholder="••••••••"
-                    minLength={6}
-                  />
-                </div>
-                {validationErrors.password && (
-                  <p className="mt-1.5 text-xs text-red-500 font-medium flex items-center">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    {validationErrors.password}
-                  </p>
-                )}
-              </div>
+                  <button
+                    type="submit"
+                    disabled={loading || (!isResetMode && !isFormValid)}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed group"
+                  >
+                    {loading ? (
+                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    ) : success ? (
+                      <span className="flex items-center">
+                        Success! Redirecting...
+                      </span>
+                    ) : (
+                      <>
+                        {isResetMode ? 'Send Reset Link' : (isLogin ? 'Sign In' : 'Sign Up')}
+                        <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
+                  </button>
 
-              <button
-                type="submit"
-                disabled={loading || !isFormValid}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed group"
-              >
-                {loading ? (
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                ) : success ? (
-                  <span className="flex items-center">
-                    Success! Redirecting...
-                  </span>
-                ) : (
+                  {isResetMode && (
+                    <button
+                      type="button"
+                      onClick={() => setIsResetMode(false)}
+                      className="w-full text-center text-sm font-bold text-stone-500 hover:text-stone-700 py-2 transition-colors"
+                    >
+                      Back to Login
+                    </button>
+                  )}
+                </form>
+
+                {!isResetMode && (
                   <>
-                    {isLogin ? 'Sign In' : 'Sign Up'}
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                    <div className="mt-6">
+                      <div className="relative mb-6">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-stone-200"></div>
+                        </div>
+                        <div className="relative flex justify-center text-sm">
+                          <span className="px-4 bg-white text-stone-400 font-medium">Or continue with</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleGoogleSignIn}
+                        disabled={loading}
+                        className="w-full flex items-center justify-center px-4 py-3 border border-stone-200 rounded-xl bg-white text-stone-700 font-bold hover:bg-stone-50 transition-all disabled:opacity-50"
+                      >
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-3" referrerPolicy="no-referrer" />
+                        Google
+                      </button>
+                    </div>
+
+                    <div className="mt-8 text-center">
+                      <button 
+                        onClick={() => { setIsLogin(!isLogin); navigate(isLogin ? '/register' : '/login'); }}
+                        className="text-sm text-stone-500 hover:text-emerald-600 transition-colors"
+                      >
+                        {isLogin ? (
+                          <>Don't have an account? <span className="font-bold text-emerald-600">Sign up now</span></>
+                        ) : (
+                          <>Already have an account? <span className="font-bold text-emerald-600">Sign in here</span></>
+                        )}
+                      </button>
+                    </div>
                   </>
                 )}
-              </button>
-            </form>
-
-            <div className="mt-6">
-              <div className="relative mb-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-stone-200"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-white text-stone-400 font-medium">Or continue with</span>
-                </div>
-              </div>
-
-              <button
-                onClick={handleGoogleSignIn}
-                disabled={loading}
-                className="w-full flex items-center justify-center px-4 py-3 border border-stone-200 rounded-xl bg-white text-stone-700 font-bold hover:bg-stone-50 transition-all disabled:opacity-50"
-              >
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-3" referrerPolicy="no-referrer" />
-                Google
-              </button>
-            </div>
-
-            <div className="mt-8 text-center">
-              <button 
-                onClick={() => { setIsLogin(!isLogin); navigate(isLogin ? '/register' : '/login'); }}
-                className="text-sm text-stone-500 hover:text-emerald-600 transition-colors"
-              >
-                {isLogin ? (
-                  <>Don't have an account? <span className="font-bold text-emerald-600">Sign up now</span></>
-                ) : (
-                  <>Already have an account? <span className="font-bold text-emerald-600">Sign in here</span></>
-                )}
-              </button>
-            </div>
+              </>
+            )}
           </div>
         </div>
       </motion.div>

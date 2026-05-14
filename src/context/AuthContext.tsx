@@ -71,14 +71,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeProfile: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       
+      // Cleanup previous profile listener if it exists
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+
       if (currentUser) {
         // Use onSnapshot for real-time profile updates
         const profilePath = `profiles/${currentUser.uid}`;
         const profileRef = doc(db, 'profiles', currentUser.uid);
-        const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
+        
+        unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
           if (docSnap.exists()) {
             setProfile(docSnap.data() as Profile);
           } else {
@@ -96,18 +105,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
           setLoading(false);
         }, (error) => {
-          handleFirestoreError(error, OperationType.GET, profilePath);
+          // If we're unsubscribing anyway, ignore permission errors that happen during sign out
+          if (auth.currentUser) {
+            handleFirestoreError(error, OperationType.GET, profilePath);
+          }
           setLoading(false);
         });
-
-        return () => unsubscribeProfile();
       } else {
         setProfile(null);
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+      }
+    };
   }, []);
 
   const signOut = async () => {
